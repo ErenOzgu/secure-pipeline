@@ -21,3 +21,8 @@ updates:
     directory: /service
     schedule:
       interval: monthly
+    ignore:
+      # The service targets Java 21, a long-term-support release. A move to the next LTS is a decision, with a
+      # change to pom.xml and the pipeline, not a monthly bump of the base image's major version.
+      - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]

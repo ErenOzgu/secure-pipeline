@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="t d">
+  <title id="t">secure-pipeline</title>
+  <desc id="d">A small Java service with a CI pipeline that fails on vulnerable dependencies, bad code, vulnerable images and web findings, and proves each of those gates can fail.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#1b2230"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2ea043" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#2ea043" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.035"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="420" fill="url(#bg)"/>
+  <rect width="1280" height="420" fill="url(#grid)"/>
+  <rect width="640" height="420" fill="url(#glow)"/>
+  <g transform="translate(0 0)">
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="64" y="128" font-size="13" letter-spacing="3" fill="#2ea043" font-weight="600">CI/CD  ·  SECURITY GATES  ·  DEVSECOPS</text>
+    <text x="62" y="196" font-size="58" font-weight="700" fill="#f0f6fc">secure-pipeline</text>
+    <text x="64" y="244" font-size="22" fill="#9aa7b8">Dependencies, code, image, running service.</text>
+    <text x="64" y="274" font-size="22" fill="#9aa7b8">Every gate shown failing on bad input.</text>
+    <g font-size="14" font-weight="600" fill="#d0d7de">
+      <rect x="64" y="304" width="126" height="34" rx="17" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/><text x="127" y="326" text-anchor="middle">OSV-Scanner</text>
+      <rect x="202" y="304" width="109" height="34" rx="17" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/><text x="256" y="326" text-anchor="middle">SonarQube</text>
+      <rect x="323" y="304" width="76" height="34" rx="17" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/><text x="361" y="326" text-anchor="middle">Trivy</text>
+      <rect x="411" y="304" width="59" height="34" rx="17" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/><text x="440" y="326" text-anchor="middle">ZAP</text>
+    </g>
+  </g>
+  <g transform="translate(700 56)">
+    <rect width="516" height="308" rx="12" fill="#0b0f14" stroke="#ffffff" stroke-opacity="0.12"/>
+    <rect width="516" height="38" rx="12" fill="#ffffff" fill-opacity="0.05"/>
+    <circle cx="22" cy="19" r="6" fill="#f85149" fill-opacity="0.85"/>
+    <circle cx="42" cy="19" r="6" fill="#d29922" fill-opacity="0.85"/>
+    <circle cx="62" cy="19" r="6" fill="#3fb950" fill-opacity="0.85"/>
+    <text x="258" y="24" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" fill="#8b949e">pipeline.yml   expected failures</text>
+    <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace" font-size="13" fill="#8b949e">
+      <text x="22" y="76" xml:space="preserve"><tspan fill="#3fb950">[PASS] </tspan><tspan fill="#e6edf3">service: gate OK, coverage 95.8%</tspan></text>
+      <text x="22" y="102" xml:space="preserve"><tspan fill="#8b949e">       </tspan><tspan fill="#8b949e">0 bugs, 0 vulnerabilities</tspan></text>
+      <text x="22" y="128" xml:space="preserve"><tspan fill="#ff7b72">[FAIL] </tspan><tspan fill="#e6edf3">log4j-core 2.14.1 stopped by OSV</tspan></text>
+      <text x="22" y="154" xml:space="preserve"><tspan fill="#ff7b72">[FAIL] </tspan><tspan fill="#e6edf3">alpine:3.12 stopped by Trivy</tspan></text>
+      <text x="22" y="180" xml:space="preserve"><tspan fill="#ff7b72">[FAIL] </tspan><tspan fill="#e6edf3">bad code: 3 bugs, 2 vulns, gate ERROR</tspan></text>
+      <text x="22" y="206" xml:space="preserve"><tspan fill="#ff7b72">[FAIL] </tspan><tspan fill="#e6edf3">bare http.server: ZAP exit 2</tspan></text>
+      <text x="22" y="232" xml:space="preserve"><tspan fill="#ffa657">control </tspan><tspan fill="#8b949e">each FAIL is required, or the job fails</tspan></text>
+    </g>
+  </g>
+  </g>
+</svg>
