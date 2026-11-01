@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Download a tool listed in tools.lock, check its SHA-256 against the lock, and put it in tools/bin/.
 #
-# tools.lock has one line per tool:  name  sha256  kind  url
+# tools.lock has one line per tool:  name  sha256  kind  url  [publisher checksum file]
 # kind is "binary" (the download is the program) or "tar.gz:MEMBER" (the program is MEMBER inside the archive).
 # A download whose hash differs from the lock is refused, and the error names the hash it actually got, so that
 # updating a tool is a reviewed change to tools.lock and never a silent one.
@@ -15,7 +15,7 @@ if [[ -z "$line" ]]; then
   echo "::error title=unknown tool::${name} is not in tools.lock"
   exit 2
 fi
-read -r _ want kind url <<<"$line"
+read -r _ want kind url _ <<<"$line"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
