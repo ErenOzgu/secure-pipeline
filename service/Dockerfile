@@ -1,5 +1,6 @@
 # The jar is built by Maven before this runs (see the pipeline); the image only adds a runtime and a user.
-FROM eclipse-temurin:21-jre-alpine
+# Pinned by digest; the pipeline refuses a Dockerfile whose FROM has none. Tag when pinned: 21-jre-alpine, 2026-11-01.
+FROM eclipse-temurin:21-jre-alpine@sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372
 
 RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app -H -s /sbin/nologin app
 

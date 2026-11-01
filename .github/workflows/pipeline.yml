@@ -13,7 +13,7 @@ env:
   # Images are pinned by digest. The comment says what the digest was when it was pinned.
   SONARQUBE_IMAGE: sonarqube@sha256:f95aaa9016dd4e92c7d70691167a6d96dbb5d8acffd61eba1cb4335d364a7840 # community 26.10.0.133078
   ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 # stable, 2026-11-01
-  LAX_IMAGE: python:3.13-alpine
+  LAX_IMAGE: python@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8 # 3.13-alpine, 2026-11-01
 
 concurrency:
   group: pipeline-${{ github.ref }}
@@ -145,10 +145,10 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: service/pom.xml
-      - name: Start a throw-away SonarQube and define the quality gate
-        run: |
-          scripts/sonarqube.sh up
-          scripts/sonarqube.sh gate-define sonar/quality-gate.json
+      - name: Start a throw-away SonarQube
+        run: scripts/sonarqube.sh up
+      - name: Define the quality gate
+        run: scripts/sonarqube.sh gate-define sonar/quality-gate.json
       - name: Analyse the service; the build waits for the quality gate and fails if it fails
         run: |
           set -uo pipefail
