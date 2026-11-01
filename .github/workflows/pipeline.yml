@@ -77,9 +77,16 @@ jobs:
           grep -qi '^x-content-type-options: nosniff' headers.txt
           user=$(docker exec svc id -u)
           test "$user" = "10001"
-      - name: Where the base image stands today (to be pinned by digest)
+      - name: The base image is pinned by digest
         run: |
-          echo "::notice title=base image digest::$(docker image inspect eclipse-temurin:21-jre-alpine --format '{{index .RepoDigests 0}}')"
+          set -uo pipefail
+          from=$(grep -E '^FROM ' service/Dockerfile | head -1)
+          if ! grep -Eq '@sha256:[0-9a-f]{64}' <<<"${from}"; then
+            digest=$(docker image inspect eclipse-temurin:21-jre-alpine --format '{{index .RepoDigests 0}}')
+            echo "::error title=base image is not pinned::${from} has no digest; today the tag is ${digest}"
+            exit 1
+          fi
+          echo "${from}"
       - name: Fetch Trivy, checked against tools.lock
         run: scripts/fetch-tool.sh trivy
       - name: The image has no fixable HIGH or CRITICAL vulnerability
@@ -160,12 +167,15 @@ jobs:
           mvn --batch-mode --no-transfer-progress --file demo/bad-code/pom.xml compile \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
             -Dsonar.host.url=http://127.0.0.1:9000 -Dsonar.token="${SONAR_TOKEN}" \
-            -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300 || status=$?
-          echo "maven exit status: ${status}"
-          test "${status}" -ne 0
+            -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300 2>&1 | tee sonar-bad.log || status=${PIPESTATUS[0]}
           gate=0
-          scripts/sonarqube.sh gate demo-bad-code || gate=$?
-          test "${gate}" -eq 1
+          scripts/sonarqube.sh gate demo-bad-code > sonar-bad-gate.log 2>&1 || gate=$?
+          cat sonar-bad-gate.log
+          if [ "${status}" -eq 0 ] || [ "${gate}" -ne 1 ]; then
+            { echo "maven status ${status}, gate status ${gate}"; cat sonar-bad-gate.log; tail -n 25 sonar-bad.log; } > sonar-bad-summary.log
+            scripts/annotate-tail.sh "The bad code did not fail the gate as required" sonar-bad-summary.log 60
+            exit 1
+          fi
       - if: always()
         run: docker logs sonarqube 2>&1 | tail -n 30 || true
 

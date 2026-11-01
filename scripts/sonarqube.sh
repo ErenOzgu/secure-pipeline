@@ -57,8 +57,10 @@ case "${1:-}" in
     key=${2:?usage: sonarqube.sh gate PROJECT_KEY}
     json=$(api --user "${SONAR_TOKEN:?}:" "$url/api/qualitygates/project_status?projectKey=${key}")
     state=$(jq -r '.projectStatus.status' <<<"$json")
+    lines=$(jq -r '.projectStatus.conditions[] | "  \(.status)  \(.metricKey)  actual=\(.actualValue // "-")  limit \(.comparator) \(.errorThreshold)"' <<<"$json")
     echo "quality gate of ${key}: ${state}"
-    jq -r '.projectStatus.conditions[] | "  \(.status)\t\(.metricKey)\tactual=\(.actualValue // "-")\tlimit \(.comparator) \(.errorThreshold)"' <<<"$json"
+    echo "$lines"
+    echo "::notice title=quality gate of ${key}: ${state}::$(awk 'BEGIN{ORS="%0A"} {print}' <<<"$lines")"
     [[ "$state" == "OK" ]]
     ;;
   *)
