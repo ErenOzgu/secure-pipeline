@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p service/target
-          cp service-build/service/target/pipeline-service.jar service/target/pipeline-service.jar
+          cp service-build/pipeline-service.jar service/target/pipeline-service.jar
           docker build -t pipeline-service:ci service
           docker image inspect pipeline-service:ci --format 'size={{.Size}} user={{.Config.User}}'
       - name: Start it and ask it three things
@@ -75,5 +75,43 @@ jobs:
         run: |
           docker buildx imagetools inspect eclipse-temurin:21-jre-alpine --format '{{.Manifest.Digest}}' | tee digest.txt
           echo "::notice title=base image digest::eclipse-temurin:21-jre-alpine@$(cat digest.txt)"
+      - name: Fetch Trivy, checked against tools.lock
+        run: scripts/fetch-tool.sh trivy
+      - name: The image has no fixable HIGH or CRITICAL vulnerability
+        run: |
+          tools/bin/trivy image --no-progress --skip-version-check \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 pipeline-service:ci
+      - name: An old image fails the same scan, and the scan names what is wrong
+        run: |
+          set -uo pipefail
+          docker pull --quiet alpine:3.12
+          status=0
+          tools/bin/trivy image --no-progress --skip-version-check \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 alpine:3.12 > trivy-demo.txt 2>&1 || status=$?
+          tail -n 40 trivy-demo.txt
+          echo "trivy exit status: ${status}"
+          test "${status}" -eq 1
+          grep -Eq "Total: [1-9]" trivy-demo.txt
       - if: always()
         run: docker logs svc || true
+
+  osv:
+    name: Known-vulnerable dependencies (OSV-Scanner)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch OSV-Scanner, checked against tools.lock
+        run: scripts/fetch-tool.sh osv-scanner
+      - name: The service has no known-vulnerable dependency
+        run: tools/bin/osv-scanner scan source --lockfile service/pom.xml
+      - name: A vulnerable dependency fails the scan, and the scan says which one
+        run: |
+          set -uo pipefail
+          status=0
+          tools/bin/osv-scanner scan source --lockfile demo/vulnerable-dependency/pom.xml > osv-demo.txt 2>&1 || status=$?
+          cat osv-demo.txt
+          echo "osv-scanner exit status: ${status}"
+          test "${status}" -eq 1
+          grep -Eq "GHSA-jfh8-c2jp-5v3q|CVE-2021-44228" osv-demo.txt
