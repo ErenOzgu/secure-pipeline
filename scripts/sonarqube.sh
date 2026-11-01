@@ -16,7 +16,7 @@ url=http://127.0.0.1:9000
 api() {
   local out
   if ! out=$(curl --fail-with-body --silent --show-error "$@" 2>&1); then
-    echo "::error title=SonarQube API call failed::${out//$'\n'/ }"
+    echo "::error title=SonarQube API call failed::${out//$'\n'/ }" >&2
     exit 1
   fi
   printf '%s' "$out"
@@ -29,7 +29,7 @@ case "${1:-}" in
     sudo sysctl -w fs.file-max=131072 > /dev/null
     docker run --detach --name sonarqube --publish 127.0.0.1:9000:9000 \
       --env SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true "$image" > /dev/null
-    echo "image: $(docker inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "$image")"
+    echo "::notice title=SonarQube image::$(docker inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "$image")"
 
     status=""
     for _ in $(seq 1 90); do

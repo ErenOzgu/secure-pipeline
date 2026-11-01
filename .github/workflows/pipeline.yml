@@ -194,13 +194,14 @@ jobs:
           set -uo pipefail
           mkdir -m 777 zap
           docker pull --quiet "${ZAP_IMAGE}"
-          echo "zap image: $(docker inspect --format '{{index .RepoDigests 0}}' "${ZAP_IMAGE}")"
+          echo "::notice title=ZAP image::$(docker inspect --format '{{index .RepoDigests 0}}' "${ZAP_IMAGE}")"
           status=0
           docker run --rm --network scan --volume "${PWD}/zap:/zap/wrk:rw" "${ZAP_IMAGE}" \
             zap-baseline.py -t "http://svc:8080/hello?name=zap" -J zap.json -r zap.html -m 1 2>&1 | tee zap.log || status=${PIPESTATUS[0]}
           echo "zap exit status: ${status}"
           if [ "${status}" -ne 0 ]; then
-            scripts/annotate-tail.sh "ZAP baseline exit status ${status}" zap.log 30
+            grep -E '^(WARN|FAIL)' zap.log > zap-findings.log || true
+            scripts/annotate-tail.sh "ZAP baseline exit status ${status}" zap-findings.log 40
           fi
           test "${status}" -eq 0
       - if: always()
