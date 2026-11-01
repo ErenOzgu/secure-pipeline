@@ -92,8 +92,10 @@ jobs:
         run: scripts/fetch-tool.sh trivy
       - name: The image has no fixable HIGH or CRITICAL vulnerability
         run: |
+          set -o pipefail
           tools/bin/trivy image --no-progress --skip-version-check \
-            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 pipeline-service:ci
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 pipeline-service:ci 2>&1 | tee trivy-service.txt
+          LEVEL=notice scripts/annotate-tail.sh "Trivy on the service image" trivy-service.txt 12
       - name: An old image fails the same scan, and the scan names what is wrong
         run: |
           set -uo pipefail
@@ -105,8 +107,30 @@ jobs:
           echo "trivy exit status: ${status}"
           test "${status}" -eq 1
           grep -Eq "Total: [1-9]" trivy-demo.txt
+          grep -E "^Total:" trivy-demo.txt | head -5 > trivy-demo-totals.txt
+          LEVEL=notice scripts/annotate-tail.sh "Trivy on alpine:3.12" trivy-demo-totals.txt 5
       - if: always()
         run: docker logs svc || true
+
+  gitlab-schema:
+    name: The GitLab version is valid against GitLab's schema
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Validate .gitlab-ci.yml, and prove the validator rejects a broken file
+        run: |
+          set -uo pipefail
+          pip install --quiet check-jsonschema==0.39.0
+          check-jsonschema --builtin-schema vendor.gitlab-ci .gitlab-ci.yml
+          printf 'stages: [a]\nbuild:\n  stage: a\n  scripts: [echo]\n' > broken.yml
+          status=0
+          check-jsonschema --builtin-schema vendor.gitlab-ci broken.yml || status=$?
+          test "${status}" -ne 0
 
   osv:
     name: Known-vulnerable dependencies (OSV-Scanner)
@@ -130,6 +154,7 @@ jobs:
           echo "osv-scanner exit status: ${status}"
           test "${status}" -eq 1
           grep -Eq "GHSA-jfh8-c2jp-5v3q|CVE-2021-44228" osv-demo.txt
+          echo "::notice title=OSV-Scanner on the vulnerable pom::$(grep -Eo 'GHSA-[0-9a-z-]+|CVE-[0-9]+-[0-9]+' osv-demo.txt | sort -u | tr '\n' ' ')"
 
   sonarqube:
     name: Code quality gate (SonarQube)
@@ -215,6 +240,7 @@ jobs:
           if [ "${status}" -ne 0 ]; then
             scripts/annotate-tail.sh "ZAP found something in the service (exit status ${status})" zap-out/service-findings.log 40
           fi
+          LEVEL=notice scripts/annotate-tail.sh "ZAP on the service" zap-out/service-findings.log 10
           exit "${status}"
       - name: The same scan on a server with no defensive headers reports them
         run: |
@@ -227,6 +253,7 @@ jobs:
           scripts/zap-baseline.sh "http://lax:8000/" lax || status=$?
           test "${status}" -eq 2
           grep -Eq "10020|10021|10038" zap-out/lax-findings.log
+          LEVEL=notice scripts/annotate-tail.sh "ZAP on a server with no defensive headers" zap-out/lax-findings.log 14
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

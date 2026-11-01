@@ -1,0 +1,106 @@
+# The same pipeline for GitLab CI/CD. IT HAS NOT BEEN RUN ON GITLAB.
+#
+# What has been checked: the file is valid against GitLab's CI schema (the GitHub pipeline does that on every push,
+# see the "gitlab-schema" job). What has not: that a GitLab runner accepts it, that the images below start, that the
+# jobs pass there. The stages are the ones the GitHub pipeline runs and proves; this file only says them in
+# GitLab's words. Images are pinned by version, not by digest, because the digests have to be read from a registry
+# on a machine that can reach one; the GitHub pipeline refuses that, and this file should, too, once it has run.
+#
+# Settings it expects (Settings > CI/CD > Variables, both masked): SONAR_HOST_URL and SONAR_TOKEN of the
+# organisation's SonarQube. Unlike the GitHub version, which starts a throw-away server, a company normally has one.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+stages:
+  - build
+  - scan
+  - quality
+  - image
+
+default:
+  interruptible: true
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_CLI: "--batch-mode --no-transfer-progress --file service/pom.xml"
+
+build:
+  stage: build
+  image: maven:3.9.11-eclipse-temurin-21
+  script:
+    - mvn $MAVEN_CLI verify
+  cache:
+    key:
+      files:
+        - service/pom.xml
+    paths:
+      - .m2/repository
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - service/target/pipeline-service.jar
+      - service/target/site/jacoco/jacoco.xml
+    reports:
+      junit: service/target/surefire-reports/TEST-*.xml
+      coverage_report:
+        coverage_format: jacoco
+        path: service/target/site/jacoco/jacoco.xml
+
+osv-scanner:
+  stage: scan
+  image:
+    name: ghcr.io/google/osv-scanner:v2.7.0
+    entrypoint: [""]
+  needs: []
+  script:
+    - osv-scanner scan source --lockfile service/pom.xml
+
+sonarqube:
+  stage: quality
+  image: maven:3.9.11-eclipse-temurin-21
+  needs:
+    - build
+  script:
+    # A gate that does not run must not look like a gate that passed.
+    - test -n "$SONAR_HOST_URL" && test -n "$SONAR_TOKEN" || { echo "SONAR_HOST_URL and SONAR_TOKEN must be set"; exit 1; }
+    - >
+      mvn $MAVEN_CLI verify org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar
+      -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN"
+      -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300
+  cache:
+    key:
+      files:
+        - service/pom.xml
+    paths:
+      - .m2/repository
+
+image-build:
+  stage: image
+  image: docker:28
+  services:
+    - docker:28-dind
+  needs:
+    - build
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - docker build -t pipeline-service:ci service
+    - docker save pipeline-service:ci --output image.tar
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - image.tar
+
+image-scan:
+  stage: image
+  image:
+    name: aquasec/trivy:0.76.1
+    entrypoint: [""]
+  needs:
+    - image-build
+  script:
+    - trivy image --input image.tar --no-progress --skip-version-check --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1

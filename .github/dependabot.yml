@@ -1,0 +1,23 @@
+# One pull request a month per ecosystem, with everything that moved in it, so keeping pins fresh does not mean
+# a stream of notifications. The pins are SHA-256 digests and commit SHAs; Dependabot updates them and keeps the
+# human-readable version in the comment next to them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: maven
+    directory: /service
+    schedule:
+      interval: monthly
+    groups:
+      maven:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /service
+    schedule:
+      interval: monthly

@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    # A commit that adds a new numbered heading to CHANGELOG.md releases that version. The tag is made by this
+    # workflow; a commit that only adds to "Unreleased" does nothing.
+    branches: [main]
+    paths: [CHANGELOG.md]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to create from the selected commit, e.g. v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Which version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      release: ${{ steps.pick.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Decide the tag, and whether it still needs a release
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${INPUT_VERSION}"
+          else
+            number=$(sed -nE 's/^## \[?v?([0-9]+\.[0-9]+\.[0-9]+)\]?.*/\1/p' CHANGELOG.md | head -1)
+            if [[ -z "${number}" ]]; then
+              echo "No numbered heading in CHANGELOG.md; nothing to release."
+              echo "release=false" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            tag="v${number}"
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              echo "${tag} is already released; nothing to do."
+              echo "release=false" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+          [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::'${tag}' is not a vX.Y.Z tag"; exit 1; }
+          echo "Releasing ${tag}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "release=true" >> "${GITHUB_OUTPUT}"
+
+  release:
+    name: Build and GitHub release
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The version in service/pom.xml is the one being released
+        run: |
+          set -euo pipefail
+          want="${VERSION#v}"
+          have=$(sed -nE 's#^  <version>([^<]+)</version>#\1#p' service/pom.xml | head -1)
+          [[ "${have}" == "${want}" ]] || { echo "::error::service/pom.xml says ${have}, the release is ${want}"; exit 1; }
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: service/pom.xml
+      - name: Test and build
+        run: mvn --batch-mode --no-transfer-progress --file service/pom.xml verify
+      - name: Name the jar after its version and sum it
+        run: |
+          set -euo pipefail
+          mkdir dist
+          cp service/target/pipeline-service.jar "dist/pipeline-service-${VERSION#v}.jar"
+          (cd dist && sha256sum ./* > SHA256SUMS)
+          ls -l dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${VERSION}" dist/* \
+            --target "${GITHUB_SHA}" --title "${VERSION}" --generate-notes
