@@ -125,7 +125,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          tools/bin/osv-scanner scan source --lockfile demo/vulnerable-dependency/pom.xml > osv-demo.txt 2>&1 || status=$?
+          tools/bin/osv-scanner scan source --lockfile pom.xml:demo/vulnerable-dependency/vulnerable.pom > osv-demo.txt 2>&1 || status=$?
           cat osv-demo.txt
           echo "osv-scanner exit status: ${status}"
           test "${status}" -eq 1

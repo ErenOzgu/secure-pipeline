@@ -86,7 +86,7 @@ case "${1:-}" in
     echo "quality gate of ${key}: ${state}"
     echo "$lines"
     echo "::notice title=quality gate of ${key}: ${state}::$(awk 'BEGIN{ORS="%0A"} {print}' <<<"$lines")"
-    [[ "$state" == "OK" ]]
+    [[ "$state" == "OK" ]] || exit 1
     ;;
   *)
     echo "usage: sonarqube.sh up | gate-define FILE | project KEY NAME | gate PROJECT_KEY" >&2
