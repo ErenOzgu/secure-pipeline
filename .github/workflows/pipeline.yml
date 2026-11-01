@@ -82,7 +82,8 @@ jobs:
           set -uo pipefail
           from=$(grep -E '^FROM ' service/Dockerfile | head -1)
           if ! grep -Eq '@sha256:[0-9a-f]{64}' <<<"${from}"; then
-            digest=$(docker image inspect eclipse-temurin:21-jre-alpine --format '{{index .RepoDigests 0}}')
+            docker pull --quiet eclipse-temurin:21-jre-alpine > /dev/null
+            digest=$(docker image inspect eclipse-temurin:21-jre-alpine --format '{{index .RepoDigests 0}}' || true)
             echo "::error title=base image is not pinned::${from} has no digest; today the tag is ${digest}"
             exit 1
           fi
@@ -144,11 +145,14 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: service/pom.xml
-      - name: Start a throw-away SonarQube
-        run: scripts/sonarqube.sh up
+      - name: Start a throw-away SonarQube and define the quality gate
+        run: |
+          scripts/sonarqube.sh up
+          scripts/sonarqube.sh gate-define sonar/quality-gate.json
       - name: Analyse the service; the build waits for the quality gate and fails if it fails
         run: |
           set -uo pipefail
+          scripts/sonarqube.sh project pipeline-service pipeline-service
           status=0
           mvn --batch-mode --no-transfer-progress --file service/pom.xml verify \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
@@ -163,6 +167,7 @@ jobs:
       - name: Code that is wrong on purpose fails the same gate
         run: |
           set -uo pipefail
+          scripts/sonarqube.sh project demo-bad-code demo-bad-code
           status=0
           mvn --batch-mode --no-transfer-progress --file demo/bad-code/pom.xml compile \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \

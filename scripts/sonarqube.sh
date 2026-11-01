@@ -2,6 +2,8 @@
 # Start a throw-away SonarQube, wait until it is up, and make a token for this run.
 #
 #   SONARQUBE_IMAGE=... scripts/sonarqube.sh up       starts it; SONAR_TOKEN is added to the job's environment
+#   scripts/sonarqube.sh gate-define FILE             makes the quality gate "pipeline" from a JSON list of conditions
+#   scripts/sonarqube.sh project KEY NAME             makes a project and puts it under that gate
 #   scripts/sonarqube.sh gate PROJECT_KEY             prints the quality gate of a project, one line per condition;
 #                                                     exit status 0 when the gate is OK, 1 when it is not
 #
@@ -53,6 +55,29 @@ case "${1:-}" in
     echo "::add-mask::${token}"
     echo "SONAR_TOKEN=${token}" >> "$GITHUB_ENV"
     ;;
+  gate-define)
+    file=${2:?usage: sonarqube.sh gate-define FILE}
+    # SonarQube's own gate judges "new code" only, and on a first analysis there is no new code to judge, so it
+    # passes anything. This gate judges the code as it is.
+    api --user "${SONAR_TOKEN:?}:" --request POST "$url/api/qualitygates/create" --data-urlencode "name=pipeline" > /dev/null
+    for condition in $(jq -c '.[]' "$file"); do
+      api --user "${SONAR_TOKEN}:" --request POST "$url/api/qualitygates/create_condition" \
+        --data-urlencode "gateName=pipeline" \
+        --data-urlencode "metric=$(jq -r '.metric' <<<"$condition")" \
+        --data-urlencode "op=$(jq -r '.op' <<<"$condition")" \
+        --data-urlencode "error=$(jq -r '.error' <<<"$condition")" > /dev/null
+    done
+    echo "quality gate 'pipeline': $(jq 'length' "$file") conditions"
+    ;;
+  project)
+    key=${2:?usage: sonarqube.sh project KEY NAME}
+    pname=${3:?usage: sonarqube.sh project KEY NAME}
+    api --user "${SONAR_TOKEN:?}:" --request POST "$url/api/projects/create" \
+      --data-urlencode "project=${key}" --data-urlencode "name=${pname}" > /dev/null
+    api --user "${SONAR_TOKEN}:" --request POST "$url/api/qualitygates/select" \
+      --data-urlencode "gateName=pipeline" --data-urlencode "projectKey=${key}" > /dev/null
+    echo "project ${key} is under the quality gate 'pipeline'"
+    ;;
   gate)
     key=${2:?usage: sonarqube.sh gate PROJECT_KEY}
     json=$(api --user "${SONAR_TOKEN:?}:" "$url/api/qualitygates/project_status?projectKey=${key}")
@@ -64,7 +89,7 @@ case "${1:-}" in
     [[ "$state" == "OK" ]]
     ;;
   *)
-    echo "usage: sonarqube.sh up | gate PROJECT_KEY" >&2
+    echo "usage: sonarqube.sh up | gate-define FILE | project KEY NAME | gate PROJECT_KEY" >&2
     exit 2
     ;;
 esac
