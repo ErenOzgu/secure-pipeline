@@ -8,8 +8,19 @@
 # The server lives for the length of one job and is never reachable from outside it. The admin password is made
 # up for the run and masked in the log.
 set -euo pipefail
+trap 'echo "::error title=sonarqube.sh stopped::line ${LINENO}: ${BASH_COMMAND}"' ERR
 
 url=http://127.0.0.1:9000
+
+# api CURL_ARGS... : call the server; on failure say what it answered, as an annotation
+api() {
+  local out
+  if ! out=$(curl --fail-with-body --silent --show-error "$@" 2>&1); then
+    echo "::error title=SonarQube API call failed::${out//$'\n'/ }"
+    exit 1
+  fi
+  printf '%s' "$out"
+}
 
 case "${1:-}" in
   up)
@@ -27,25 +38,24 @@ case "${1:-}" in
       sleep 4
     done
     if [[ "$status" != "UP" ]]; then
-      echo "::error title=SonarQube did not start::status is '${status}'"
-      docker logs sonarqube | tail -n 40
+      docker logs sonarqube > "${RUNNER_TEMP:-/tmp}/sonarqube.log" 2>&1 || true
+      "$(dirname "$0")/annotate-tail.sh" "SonarQube did not start (status '${status}')" "${RUNNER_TEMP:-/tmp}/sonarqube.log" 30
       exit 1
     fi
     echo "SonarQube $(curl --silent "$url/api/system/status" | jq -r '.version') is up"
 
     password=$(openssl rand -hex 16)
     echo "::add-mask::${password}"
-    curl --fail --silent --show-error --user admin:admin --request POST "$url/api/users/change_password" \
-      --data-urlencode login=admin --data-urlencode previousPassword=admin --data-urlencode "password=${password}"
-    token=$(curl --fail --silent --show-error --user "admin:${password}" --request POST \
-      "$url/api/user_tokens/generate" --data-urlencode name=pipeline | jq -r '.token')
+    api --user admin:admin --request POST "$url/api/users/change_password" \
+      --data-urlencode login=admin --data-urlencode previousPassword=admin --data-urlencode "password=${password}" > /dev/null
+    token=$(api --user "admin:${password}" --request POST "$url/api/user_tokens/generate" \
+      --data-urlencode name=pipeline | jq -r '.token')
     echo "::add-mask::${token}"
     echo "SONAR_TOKEN=${token}" >> "$GITHUB_ENV"
     ;;
   gate)
     key=${2:?usage: sonarqube.sh gate PROJECT_KEY}
-    json=$(curl --fail --silent --show-error --user "${SONAR_TOKEN:?}:" \
-      "$url/api/qualitygates/project_status?projectKey=${key}")
+    json=$(api --user "${SONAR_TOKEN:?}:" "$url/api/qualitygates/project_status?projectKey=${key}")
     state=$(jq -r '.projectStatus.status' <<<"$json")
     echo "quality gate of ${key}: ${state}"
     jq -r '.projectStatus.conditions[] | "  \(.status)\t\(.metricKey)\tactual=\(.actualValue // "-")\tlimit \(.comparator) \(.errorThreshold)"' <<<"$json"

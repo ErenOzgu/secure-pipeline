@@ -140,10 +140,16 @@ jobs:
         run: scripts/sonarqube.sh up
       - name: Analyse the service; the build waits for the quality gate and fails if it fails
         run: |
+          set -uo pipefail
+          status=0
           mvn --batch-mode --no-transfer-progress --file service/pom.xml verify \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
             -Dsonar.host.url=http://127.0.0.1:9000 -Dsonar.token="${SONAR_TOKEN}" \
-            -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300
+            -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300 2>&1 | tee sonar-service.log || status=${PIPESTATUS[0]}
+          if [ "${status}" -ne 0 ]; then
+            scripts/annotate-tail.sh "SonarQube analysis of the service failed" sonar-service.log 30
+          fi
+          exit "${status}"
       - name: The gate of the service, condition by condition
         run: scripts/sonarqube.sh gate pipeline-service
       - name: Code that is wrong on purpose fails the same gate
@@ -191,15 +197,11 @@ jobs:
           echo "zap image: $(docker inspect --format '{{index .RepoDigests 0}}' "${ZAP_IMAGE}")"
           status=0
           docker run --rm --network scan --volume "${PWD}/zap:/zap/wrk:rw" "${ZAP_IMAGE}" \
-            zap-baseline.py -t "http://svc:8080/hello?name=zap" -J zap.json -r zap.html -m 1 || status=$?
+            zap-baseline.py -t "http://svc:8080/hello?name=zap" -J zap.json -r zap.html -m 1 2>&1 | tee zap.log || status=${PIPESTATUS[0]}
           echo "zap exit status: ${status}"
-          python3 - <<'PY'
-          import json
-          report = json.load(open("zap/zap.json"))
-          for site in report.get("site", []):
-              for alert in site.get("alerts", []):
-                  print(alert["riskdesc"], "|", alert["name"], "| rule", alert["pluginid"], "| instances", alert["count"])
-          PY
+          if [ "${status}" -ne 0 ]; then
+            scripts/annotate-tail.sh "ZAP baseline exit status ${status}" zap.log 30
+          fi
           test "${status}" -eq 0
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
