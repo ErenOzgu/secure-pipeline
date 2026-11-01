@@ -10,8 +10,10 @@ permissions:
   contents: read
 
 env:
-  SONARQUBE_IMAGE: sonarqube:community
-  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable
+  # Images are pinned by digest. The comment says what the digest was when it was pinned.
+  SONARQUBE_IMAGE: sonarqube@sha256:f95aaa9016dd4e92c7d70691167a6d96dbb5d8acffd61eba1cb4335d364a7840 # community 26.10.0.133078
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 # stable, 2026-11-01
+  LAX_IMAGE: python:3.13-alpine
 
 concurrency:
   group: pipeline-${{ github.ref }}
@@ -77,8 +79,7 @@ jobs:
           test "$user" = "10001"
       - name: Where the base image stands today (to be pinned by digest)
         run: |
-          docker buildx imagetools inspect eclipse-temurin:21-jre-alpine --format '{{.Manifest.Digest}}' | tee digest.txt
-          echo "::notice title=base image digest::eclipse-temurin:21-jre-alpine@$(cat digest.txt)"
+          echo "::notice title=base image digest::$(docker image inspect eclipse-temurin:21-jre-alpine --format '{{index .RepoDigests 0}}')"
       - name: Fetch Trivy, checked against tools.lock
         run: scripts/fetch-tool.sh trivy
       - name: The image has no fixable HIGH or CRITICAL vulnerability
@@ -189,24 +190,31 @@ jobs:
           docker network create scan
           docker run -d --name svc --network scan pipeline-service:ci
           timeout 30 sh -c 'until docker exec svc wget -q -O /dev/null http://127.0.0.1:8080/healthz; do sleep 1; done'
-      - name: ZAP baseline against the running service
+      - name: ZAP baseline against the running service; any warning fails the job
         run: |
           set -uo pipefail
-          mkdir -m 777 zap
           docker pull --quiet "${ZAP_IMAGE}"
           echo "::notice title=ZAP image::$(docker inspect --format '{{index .RepoDigests 0}}' "${ZAP_IMAGE}")"
           status=0
-          docker run --rm --network scan --volume "${PWD}/zap:/zap/wrk:rw" "${ZAP_IMAGE}" \
-            zap-baseline.py -t "http://svc:8080/hello?name=zap" -J zap.json -r zap.html -m 1 2>&1 | tee zap.log || status=${PIPESTATUS[0]}
-          echo "zap exit status: ${status}"
+          scripts/zap-baseline.sh "http://svc:8080/hello?name=zap" service || status=$?
           if [ "${status}" -ne 0 ]; then
-            grep -E '^(WARN|FAIL)' zap.log > zap-findings.log || true
-            scripts/annotate-tail.sh "ZAP baseline exit status ${status}" zap-findings.log 40
+            scripts/annotate-tail.sh "ZAP found something in the service (exit status ${status})" zap-out/service-findings.log 40
           fi
-          test "${status}" -eq 0
+          exit "${status}"
+      - name: The same scan on a server with no defensive headers reports them
+        run: |
+          set -uo pipefail
+          docker pull --quiet "${LAX_IMAGE}"
+          echo "::notice title=lax image::$(docker inspect --format '{{index .RepoDigests 0}}' "${LAX_IMAGE}")"
+          docker run -d --name lax --network scan "${LAX_IMAGE}" python -m http.server 8000 --directory /tmp
+          timeout 30 sh -c 'until docker exec lax wget -q -O /dev/null http://127.0.0.1:8000/; do sleep 1; done'
+          status=0
+          scripts/zap-baseline.sh "http://lax:8000/" lax || status=$?
+          test "${status}" -eq 2
+          grep -Eq "10020|10021|10038" zap-out/lax-findings.log
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zap-report
-          path: zap/
+          path: zap-out/
           if-no-files-found: ignore

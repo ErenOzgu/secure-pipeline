@@ -44,7 +44,7 @@ case "${1:-}" in
     fi
     echo "SonarQube $(curl --silent "$url/api/system/status" | jq -r '.version') is up"
 
-    password=$(openssl rand -hex 16)
+    password="Aa1!$(openssl rand -hex 16)"  # the server insists on upper case, lower case, a digit and a symbol
     echo "::add-mask::${password}"
     api --user admin:admin --request POST "$url/api/users/change_password" \
       --data-urlencode login=admin --data-urlencode previousPassword=admin --data-urlencode "password=${password}" > /dev/null
